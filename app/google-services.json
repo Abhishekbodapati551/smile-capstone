@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "743668691624",
+    "project_id": "smile-ce764",
+    "storage_bucket": "smile-ce764.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:743668691624:android:6a475a374c3b261e7ac89d",
+        "android_client_info": {
+          "package_name": "com.example.smileapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCo2tWcmdz3iSUVcvS49BsqD_0idHnURZ4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

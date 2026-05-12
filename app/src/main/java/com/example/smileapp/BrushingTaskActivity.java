@@ -1,0 +1,255 @@
+package com.example.smileapp;
+
+import android.Manifest;
+import android.content.ContentValues;
+import android.content.pm.PackageManager;
+import android.os.Bundle;
+import android.os.CountDownTimer;
+import android.provider.MediaStore;
+import android.util.Log;
+import android.view.View;
+import android.widget.ProgressBar;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.camera.core.CameraSelector;
+import androidx.camera.core.Preview;
+import androidx.camera.lifecycle.ProcessCameraProvider;
+import androidx.camera.video.MediaStoreOutputOptions;
+import androidx.camera.video.Quality;
+import androidx.camera.video.QualitySelector;
+import androidx.camera.video.Recorder;
+import androidx.camera.video.Recording;
+import androidx.camera.video.VideoCapture;
+import androidx.camera.video.VideoRecordEvent;
+import androidx.camera.view.PreviewView;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+
+import com.example.smileapp.database.AppDatabase;
+import com.example.smileapp.models.BrushingLog;
+import com.example.smileapp.models.User;
+import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton;
+import com.google.common.util.concurrent.ListenableFuture;
+
+import com.google.firebase.firestore.FirebaseFirestore;
+
+import java.text.SimpleDateFormat;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class BrushingTaskActivity extends AppCompatActivity {
+
+    private static final String TAG = "BrushingTaskActivity";
+    private static final int REQUEST_CODE_PERMISSIONS = 10;
+    private static final String[] REQUIRED_PERMISSIONS = {
+            Manifest.permission.CAMERA,
+            Manifest.permission.RECORD_AUDIO
+    };
+
+    private PreviewView viewFinder;
+    private TextView timerText, recordingStatus;
+    private ExtendedFloatingActionButton recordButton;
+    private ProgressBar uploadProgress;
+
+    private VideoCapture<Recorder> videoCapture;
+    private Recording recording;
+    private ExecutorService cameraExecutor;
+
+    private AppDatabase db;
+    private String userId;
+    private CountDownTimer countDownTimer;
+    private static final long BRUSHING_TIME_MS = 120000; // 2 minutes
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_brushing_task);
+
+        db = AppDatabase.getInstance(this);
+        userId = getIntent().getStringExtra("USER_ID");
+        if (userId == null) userId = "demo_user";
+
+        viewFinder = findViewById(R.id.viewFinder);
+        timerText = findViewById(R.id.timer_text);
+        recordingStatus = findViewById(R.id.recording_status);
+        recordButton = findViewById(R.id.record_button);
+        uploadProgress = findViewById(R.id.upload_progress);
+
+        if (allPermissionsGranted()) {
+            startCamera();
+        } else {
+            ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS);
+        }
+
+        recordButton.setOnClickListener(v -> toggleRecording());
+
+        cameraExecutor = Executors.newSingleThreadExecutor();
+    }
+
+    private void startCamera() {
+        ListenableFuture<ProcessCameraProvider> cameraProviderFuture = ProcessCameraProvider.getInstance(this);
+
+        cameraProviderFuture.addListener(() -> {
+            try {
+                ProcessCameraProvider cameraProvider = cameraProviderFuture.get();
+
+                Preview preview = new Preview.Builder().build();
+                preview.setSurfaceProvider(viewFinder.getSurfaceProvider());
+
+                Recorder recorder = new Recorder.Builder()
+                        .setQualitySelector(QualitySelector.from(Quality.LOWEST))
+                        .build();
+                videoCapture = VideoCapture.withOutput(recorder);
+
+                CameraSelector cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA;
+
+                cameraProvider.unbindAll();
+                cameraProvider.bindToLifecycle(this, cameraSelector, preview, videoCapture);
+
+            } catch (Exception e) {
+                Log.e(TAG, "Use case binding failed", e);
+            }
+        }, ContextCompat.getMainExecutor(this));
+    }
+
+    private void toggleRecording() {
+        if (recording != null) {
+            stopRecording();
+            return;
+        }
+
+        startRecording();
+    }
+
+    private void startRecording() {
+        String name = "SmileApp-" + new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US).format(System.currentTimeMillis());
+        ContentValues contentValues = new ContentValues();
+        contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+        contentValues.put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4");
+
+        MediaStoreOutputOptions options = new MediaStoreOutputOptions.Builder(getContentResolver(), MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+                .setContentValues(contentValues)
+                .build();
+
+        recording = videoCapture.getOutput()
+                .prepareRecording(this, options)
+                .withAudioEnabled()
+                .start(ContextCompat.getMainExecutor(this), event -> {
+                    if (event instanceof VideoRecordEvent.Start) {
+                        recordButton.setText("Finish Brushing");
+                        recordButton.setIcon(ContextCompat.getDrawable(this, android.R.drawable.ic_media_pause));
+                        recordingStatus.setText("RECORDING");
+                        recordingStatus.setTextColor(ContextCompat.getColor(this, android.R.color.holo_red_light));
+                        startTimer();
+                    } else if (event instanceof VideoRecordEvent.Finalize) {
+                        VideoRecordEvent.Finalize finalizeEvent = (VideoRecordEvent.Finalize) event;
+                        if (!finalizeEvent.hasError()) {
+                            saveLog(finalizeEvent.getOutputResults().getOutputUri().toString());
+                        } else {
+                            if (recording != null) recording.close();
+                            recording = null;
+                            Log.e(TAG, "Video recording error: " + finalizeEvent.getError());
+                        }
+                    }
+                });
+    }
+
+    private void stopRecording() {
+        if (recording != null) {
+            recording.stop();
+            recording = null;
+            if (countDownTimer != null) countDownTimer.cancel();
+        }
+    }
+
+    private void startTimer() {
+        countDownTimer = new CountDownTimer(BRUSHING_TIME_MS, 1000) {
+            public void onTick(long millisUntilFinished) {
+                long minutes = (millisUntilFinished / 1000) / 60;
+                long seconds = (millisUntilFinished / 1000) % 60;
+                timerText.setText(String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds));
+            }
+
+            public void onFinish() {
+                timerText.setText("00:00");
+                stopRecording();
+            }
+        }.start();
+    }
+
+    private void saveLog(String uri) {
+        uploadProgress.setVisibility(View.VISIBLE);
+        new Thread(() -> {
+            BrushingLog log = new BrushingLog(userId, uri, System.currentTimeMillis());
+            db.appDao().insertBrushingLog(log);
+            
+            User user = db.appDao().getUserById(userId);
+            if (user != null) {
+                user.points += 10;
+                user.streak += 1;
+                db.appDao().updateUser(user);
+                
+                // Sync to Firestore
+                FirebaseFirestore firestore = FirebaseFirestore.getInstance();
+                
+                // Update User Points
+                firestore.collection("users").document(userId)
+                    .update("points", user.points, "streak", user.streak);
+                
+                // Save Brushing Log metadata
+                Map<String, Object> logMap = new HashMap<>();
+                logMap.put("childId", userId);
+                logMap.put("videoUri", uri); // Local URI for now
+                logMap.put("timestamp", log.timestamp);
+                logMap.put("approved", false);
+                logMap.put("doctorId", user.doctorId); // Store doctorId for easier querying
+                
+                firestore.collection("brushing_logs").add(logMap)
+                    .addOnSuccessListener(documentReference -> {
+                        // Optionally update local log with firestore ID if needed
+                    });
+            }
+            
+            runOnUiThread(() -> {
+                uploadProgress.setVisibility(View.GONE);
+                Toast.makeText(this, "Brushing session recorded! +10 Points", Toast.LENGTH_LONG).show();
+                finish();
+            });
+        }).start();
+    }
+
+    private boolean allPermissionsGranted() {
+        for (String permission : REQUIRED_PERMISSIONS) {
+            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_CODE_PERMISSIONS) {
+            if (allPermissionsGranted()) {
+                startCamera();
+            } else {
+                Toast.makeText(this, "Permissions not granted by the user.", Toast.LENGTH_SHORT).show();
+                finish();
+            }
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        cameraExecutor.shutdown();
+        if (countDownTimer != null) countDownTimer.cancel();
+    }
+}

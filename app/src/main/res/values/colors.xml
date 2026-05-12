@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Core Colors -->
+    <color name="black">#FF1A237E</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="transparent">#00000000</color>
+    <color name="glass_white">#F2FFFFFF</color>
+
+    <!-- Child Theme Colors (Playful, Vibrant) -->
+    <color name="child_blue">#42A5F5</color>
+    <color name="child_purple">#AB47BC</color>
+    <color name="child_pink">#EC407A</color>
+    <color name="child_gradient_start">#FF9A9E</color>
+    <color name="child_gradient_end">#FECFEF</color>
+
+    <!-- Doctor Theme Colors (Professional, Sleek, Teal/Blue) -->
+    <color name="doctor_blue">#29B6F6</color>
+    <color name="doctor_teal">#26A69A</color>
+    <color name="doctor_gradient_start">#4FACFE</color>
+    <color name="doctor_gradient_end">#00F2FE</color>
+
+    <!-- App Background Colors -->
+    <color name="bg_main_start">#a18cd1</color>
+    <color name="bg_main_end">#fbc2eb</color>
+
+    <!-- UI Colors -->
+    <color name="card_background">#FFFFFF</color>
+    <color name="text_primary">#1A237E</color>
+    <color name="text_secondary">#3949AB</color>
+    <color name="login_button_start">#FF0844</color>
+    <color name="login_button_end">#FFB199</color>
+
+    <!-- Action Colors -->
+    <color name="action_blue">#2196F3</color>
+    <color name="action_purple">#9C27B0</color>
+    <color name="action_orange">#FF9800</color>
+    <color name="action_green">#4CAF50</color>
+
+    <!-- New Dashboard Colors -->
+    <color name="dashboard_text_white">#FFFFFF</color>
+    <color name="dashboard_card_bg">#FFFFFF</color>
+    <color name="streak_fire_bg">#FF9EAF</color>
+    <color name="progress_grey">#E0E0E0</color>
+    <color name="reward_pink">#FFB6C1</color>
+    <color name="reward_yellow">#FFD700</color>
+    <color name="reward_locked">#F0F0F0</color>
+</resources>

@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smile App - Dental Care</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Quicksand', sans-serif; }
+        .bg-main { background: linear-gradient(135deg, #1A237E 0%, #42A5F5 100%); }
+        .bg-doctor { background: linear-gradient(135deg, #008080 0%, #004d40 100%); }
+        .bg-child { background: linear-gradient(135deg, #6A1B9A 0%, #AB47BC 100%); }
+        .glass-card { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.3); }
+        .hidden { display: none !important; }
+        .active-dot { width: 8px; height: 8px; background: #4CAF50; border-radius: 50%; }
+        input::placeholder { color: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+
+    <!-- START SCREEN (Role Selection) -->
+    <div id="screen-start" class="min-h-screen bg-main flex flex-col items-center justify-center p-6">
+        <div class="text-white text-center mb-12 animate-bounce">
+            <span class="text-8xl">⭐</span>
+            <h1 class="text-5xl font-black mt-4">Smile App</h1>
+            <p class="text-xl opacity-80 mt-2">Dental Care Adventure</p>
+        </div>
+        <div class="w-full max-w-sm space-y-4">
+            <button onclick="navigateTo('login-child')" class="w-full bg-white text-blue-900 p-5 rounded-3xl font-black text-xl shadow-xl hover:scale-105 transition-all">I'M A PATIENT</button>
+            <button onclick="navigateTo('login-doctor')" class="w-full bg-teal-500 text-white p-5 rounded-3xl font-black text-xl shadow-xl hover:scale-105 transition-all">I'M A DOCTOR</button>
+        </div>
+    </div>
+
+    <!-- CHILD LOGIN -->
+    <div id="screen-login-child" class="min-h-screen bg-child hidden flex flex-col items-center pt-20 p-6">
+        <div class="text-white text-6xl mb-8">✨</div>
+        <div class="w-full max-w-md glass-card p-10 rounded-[40px] shadow-2xl">
+            <h2 class="text-3xl font-black text-slate-800 text-center">Welcome Back!</h2>
+            <p class="text-slate-500 text-center mb-10">Your login adventure starts here</p>
+            <div class="space-y-6">
+                <input type="email" id="child-email" placeholder="Email Address" class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-purple-500 outline-none transition">
+                <input type="password" id="child-password" placeholder="Password" class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-purple-500 outline-none transition">
+                <p class="text-right text-purple-600 font-bold cursor-pointer hover:underline" onclick="navigateTo('forgot')">Forgot Password?</p>
+                <button onclick="handleLogin('child')" class="w-full bg-child text-white p-5 rounded-3xl font-black text-xl shadow-lg shadow-purple-900/30 hover:scale-105 transition-all">LOGIN</button>
+                <p class="text-center font-bold text-slate-400">New here? <span class="text-purple-600 cursor-pointer" onclick="navigateTo('register')">Sign Up</span></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- DOCTOR LOGIN -->
+    <div id="screen-login-doctor" class="min-h-screen bg-doctor hidden flex flex-col items-center pt-20 p-6">
+        <div class="text-white text-6xl mb-8">📞</div>
+        <div class="w-full max-w-md glass-card p-10 rounded-[40px] shadow-2xl">
+            <h2 class="text-3xl font-black text-slate-800 text-center">Doctor Login</h2>
+            <p class="text-slate-500 text-center mb-10">Manage your clinic schedule</p>
+            <div class="space-y-6">
+                <input type="email" id="doctor-email" placeholder="Email Address" class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-teal-500 outline-none transition">
+                <input type="password" id="doctor-password" placeholder="Password" class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-teal-500 outline-none transition">
+                <p class="text-right text-teal-600 font-bold cursor-pointer hover:underline" onclick="navigateTo('forgot')">Forgot Password?</p>
+                <button onclick="handleLogin('doctor')" class="w-full bg-doctor text-white p-5 rounded-3xl font-black text-xl shadow-lg shadow-teal-900/30 hover:scale-105 transition-all">LOGIN</button>
+                <p class="text-center font-bold text-slate-400">Join the network? <span class="text-teal-600 cursor-pointer" onclick="navigateTo('register')">Register</span></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- REGISTER SCREEN -->
+    <div id="screen-register" class="min-h-screen bg-main hidden flex flex-col items-center pt-10 p-6 overflow-y-auto">
+        <div class="w-full max-w-md glass-card p-10 rounded-[40px] shadow-2xl mb-10">
+            <h2 class="text-3xl font-black text-slate-800 text-center mb-2">Create Account</h2>
+            <div class="flex bg-slate-100 p-2 rounded-2xl mb-8">
+                <button id="reg-role-child" onclick="setRegRole('child')" class="flex-1 p-3 rounded-xl font-bold bg-white shadow-sm text-blue-900 transition-all">PATIENT</button>
+                <button id="reg-role-doctor" onclick="setRegRole('doctor')" class="flex-1 p-3 rounded-xl font-bold text-slate-500 transition-all">DOCTOR</button>
+            </div>
+            <div class="space-y-4">
+                <input type="text" id="reg-name" placeholder="Full Name" class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none transition">
+                <input type="email" id="reg-email" placeholder="Email Address" class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none transition">
+                <input type="password" id="reg-password" placeholder="Password" class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none transition">
+                <div id="doctor-id-field">
+                    <input type="text" id="reg-doctor-id" placeholder="Enter Doctor ID (e.g. 1176)" class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl border-blue-200 outline-none transition">
+                    <p class="text-[10px] text-blue-400 mt-1 ml-2">Ask your doctor for their 4-digit code</p>
+                </div>
+                <button onclick="handleRegister()" class="w-full bg-blue-600 text-white p-5 rounded-3xl font-black text-xl shadow-lg hover:scale-105 transition-all mt-4">SIGN UP</button>
+                <p class="text-center font-bold text-slate-400">Already have an account? <span class="text-blue-600 cursor-pointer" onclick="navigateTo('start')">Login</span></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- FORGOT PASSWORD -->
+    <div id="screen-forgot" class="min-h-screen bg-main hidden flex flex-col items-center justify-center p-6">
+        <div class="w-full max-w-md glass-card p-10 rounded-[40px] shadow-2xl">
+            <h2 class="text-3xl font-black text-slate-800 mb-2">Reset Password</h2>
+            <p class="text-slate-500 mb-8">Enter your email and we'll send a magic link</p>
+            <div class="space-y-6">
+                <input type="email" id="forgot-email" placeholder="Email Address" class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none transition">
+                <button onclick="handleForgot()" class="w-full bg-main text-white p-5 rounded-3xl font-black text-xl shadow-lg hover:scale-105 transition-all">SEND LINK</button>
+                <button onclick="navigateTo('start')" class="w-full text-slate-400 font-bold">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CHILD DASHBOARD -->
+    <div id="screen-dashboard-child" class="min-h-screen bg-child hidden pb-20">
+        <nav class="p-8 flex justify-between items-start text-white">
+            <div>
+                <h2 id="child-welcome-msg" class="text-4xl font-black">Hi, Friend!</h2>
+                <p class="text-lg opacity-80">Ready for your clean smile?</p>
+            </div>
+            <button onclick="logout()" class="w-14 h-14 bg-yellow-400 rounded-full flex items-center justify-center text-2xl shadow-lg border-2 border-white">⭐</button>
+        </nav>
+
+        <div class="px-6 space-y-6">
+            <!-- Streak Card -->
+            <div class="bg-white p-6 rounded-[32px] shadow-xl flex justify-between items-center relative overflow-hidden">
+                <div>
+                    <p class="text-slate-400 font-bold text-sm uppercase tracking-wider">Current Streak</p>
+                    <p id="child-streak" class="text-4xl font-black text-indigo-900 mt-1">0 Days</p>
+                </div>
+                <div class="bg-orange-100 w-16 h-16 rounded-3xl flex items-center justify-center text-3xl">🔥</div>
+            </div>
+
+            <!-- Task Card -->
+            <div class="bg-white p-6 rounded-[32px] shadow-xl">
+                <div class="flex justify-between items-start mb-4">
+                    <h3 class="text-xl font-black text-indigo-900">Today's Mission</h3>
+                    <span class="text-2xl opacity-20">⬜</span>
+                </div>
+                <p class="text-slate-500">Brush for 2 minutes to earn points!</p>
+                <div class="w-full bg-slate-100 h-2 rounded-full mt-6">
+                    <div class="bg-indigo-500 w-[5%] h-full rounded-full"></div>
+                </div>
+                <p class="text-right text-[10px] text-slate-400 mt-2 font-bold uppercase">Not started yet</p>
+            </div>
+
+            <!-- Start Button -->
+            <button class="w-full bg-white text-indigo-900 p-6 rounded-3xl shadow-xl flex items-center justify-center space-x-4 hover:scale-[1.02] transition-transform">
+                <span class="text-2xl">⏳</span>
+                <span class="text-xl font-black">START BRUSHING TIMER</span>
+            </button>
+
+            <!-- Appointment Notification -->
+            <div id="child-appt-card" class="bg-blue-50 border-2 border-blue-200 p-6 rounded-[32px] hidden animate-pulse">
+                <div class="flex items-center space-x-4">
+                    <div class="text-2xl text-blue-500">ℹ️</div>
+                    <div class="flex-1">
+                        <p class="font-black text-blue-800">New Appointment!</p>
+                        <p id="child-appt-details" class="text-blue-600 font-medium">Check-up: Oct 25 at 10:00 AM</p>
+                    </div>
+                    <button onclick="this.parentElement.parentElement.remove()" class="text-blue-300">✕</button>
+                </div>
+            </div>
+
+            <!-- Rewards Mini -->
+            <div class="bg-indigo-50/50 p-6 rounded-[32px] border border-indigo-100">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-black text-indigo-900">🎁 My Rewards</h3>
+                    <span class="text-blue-400 font-bold text-sm">View All</span>
+                </div>
+                <div class="grid grid-cols-4 gap-4 text-center">
+                    <div class="space-y-2 opacity-100">
+                        <div class="bg-pink-400 h-14 rounded-2xl flex items-center justify-center text-white relative">
+                            🧸 <span class="absolute -top-1 -right-1 bg-green-500 rounded-full text-[8px] p-0.5">✔</span>
+                        </div>
+                        <p class="text-[10px] font-bold text-slate-500">Teddy</p>
+                    </div>
+                    <div class="space-y-2 opacity-100">
+                        <div class="bg-yellow-400 h-14 rounded-2xl flex items-center justify-center text-white relative">
+                            🏷️ <span class="absolute -top-1 -right-1 bg-green-500 rounded-full text-[8px] p-0.5">✔</span>
+                        </div>
+                        <p class="text-[10px] font-bold text-slate-500">Badge</p>
+                    </div>
+                    <div class="space-y-2 opacity-30">
+                        <div class="bg-slate-300 h-14 rounded-2xl flex items-center justify-center">🌈</div>
+                        <p class="text-[10px] font-bold text-slate-500">Rainbow</p>
+                    </div>
+                    <div class="space-y-2 opacity-30">
+                        <div class="bg-slate-300 h-14 rounded-2xl flex items-center justify-center">🏆</div>
+                        <p class="text-[10px] font-bold text-slate-500">Trophy</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DOCTOR DASHBOARD -->
+    <div id="screen-dashboard-doctor" class="min-h-screen bg-doctor hidden pb-10">
+        <header class="p-8 pt-12 flex justify-between items-center text-white">
+            <div>
+                <h2 id="doctor-welcome-msg" class="text-2xl font-black">Welcome, Dr. Smith</h2>
+                <p id="doctor-id-display" class="text-teal-200 text-sm font-bold italic">Your Doctor ID: 1176</p>
+            </div>
+            <button onclick="logout()" class="bg-white/10 hover:bg-white/20 p-3 rounded-full border border-white/20">
+                <span class="text-xl">🚪</span>
+            </button>
+        </header>
+
+        <div class="px-6 space-y-6">
+            <!-- Stats Grid -->
+            <div class="grid grid-cols-2 gap-4">
+                <div class="bg-white/10 border border-white/20 p-5 rounded-[28px] text-white backdrop-blur-sm" onclick="showSubPage('patients')">
+                    <div class="text-2xl mb-2">👥</div>
+                    <p class="text-[10px] font-black uppercase opacity-60">Total Patients</p>
+                    <p id="doc-stat-patients" class="text-2xl font-black">0</p>
+                </div>
+                <div class="bg-white/10 border border-white/20 p-5 rounded-[28px] text-white backdrop-blur-sm" onclick="showSubPage('appointments')">
+                    <div class="text-2xl mb-2">📅</div>
+                    <p class="text-[10px] font-black uppercase opacity-60">Appointments</p>
+                    <p id="doc-stat-appointments" class="text-2xl font-black">0</p>
+                </div>
+                <div class="bg-white/10 border border-white/20 p-5 rounded-[28px] text-white backdrop-blur-sm" onclick="showSubPage('approvals')">
+                    <div class="text-2xl mb-2">🔔</div>
+                    <p class="text-[10px] font-black uppercase opacity-60">Approvals</p>
+                    <p id="doc-stat-approvals" class="text-2xl font-black text-orange-400">0</p>
+                </div>
+                <div class="bg-white/10 border border-white/20 p-5 rounded-[28px] text-white backdrop-blur-sm">
+                    <div class="text-2xl mb-2">🎬</div>
+                    <p class="text-[10px] font-black uppercase opacity-60">Reviews</p>
+                    <p class="text-2xl font-black">0</p>
+                </div>
+            </div>
+
+            <!-- List Sections (Same as App Side-by-Side on Desktop) -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Today's Appointments -->
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center px-2">
+                        <h3 class="text-white font-black">Today's Schedule</h3>
+                        <span class="text-white/50 text-xs font-bold uppercase">View All</span>
+                    </div>
+                    <div id="doc-mini-appointments" class="space-y-3">
+                        <!-- Appointments -->
+                    </div>
+                    <button onclick="openAppointmentModal()" class="w-full bg-teal-500 text-white p-4 rounded-2xl font-black shadow-lg">Schedule New Appointment</button>
+                </div>
+
+                <!-- Recent Patients -->
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center px-2">
+                        <h3 class="text-white font-black">Recent Patients</h3>
+                        <span class="text-white/50 text-xs font-bold uppercase" onclick="showSubPage('patients')">View All</span>
+                    </div>
+                    <div id="doc-mini-patients" class="space-y-3">
+                        <!-- Patients -->
+                    </div>
+                    <button onclick="showSubPage('patients')" class="w-full bg-green-500 text-white p-4 rounded-2xl font-black shadow-lg">Manage Patient Data</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: DOCTOR SUB-PAGES (Approvals, Patients, etc) -->
+    <div id="modal-subpage" class="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[100] hidden overflow-y-auto p-4 md:p-10">
+        <div class="w-full max-w-4xl mx-auto glass-card rounded-[40px] shadow-2xl p-8 min-h-[600px] relative">
+            <button onclick="closeSubPage()" class="absolute top-8 right-8 text-slate-400 hover:text-slate-600 text-3xl">✕</button>
+            <h2 id="subpage-title" class="text-4xl font-black text-slate-800 mb-10">Title</h2>
+            <div id="subpage-content" class="space-y-6">
+                <!-- Content generated via JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: ADD APPOINTMENT -->
+    <div id="modal-add-appt" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[110] hidden items-center justify-center p-4">
+        <div class="bg-white w-full max-w-lg rounded-[40px] shadow-2xl p-10">
+            <h3 class="text-2xl font-black text-slate-800 mb-8 text-center">Schedule New Visit</h3>
+            <div class="space-y-6">
+                <select id="appt-patient" class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold cursor-pointer outline-none">
+                    <option value="">Select Patient...</option>
+                </select>
+                <input type="text" id="appt-type" placeholder="Visit Type (e.g. Check-up)" class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none">
+                <input type="datetime-local" id="appt-date" class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none">
+                <button onclick="saveAppointment()" class="w-full bg-doctor text-white p-5 rounded-3xl font-black text-xl shadow-xl transition-all">CONFIRM APPOINTMENT</button>
+                <button onclick="closeAppointmentModal()" class="w-full text-slate-400 font-bold">Go Back</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // CONFIG
+        const firebaseConfig = {
+            apiKey: "AIzaSyCo2tWcmdz3iSUVcvS49BsqD_0idHnURZ4",
+            authDomain: "smile-ce764.firebaseapp.com",
+            projectId: "smile-ce764",
+            storageBucket: "smile-ce764.firebasestorage.app",
+            messagingSenderId: "743668691624",
+            appId: "1:743668691624:android:6a475a374c3b261e7ac89d"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        let currentRole = null;
+        let userData = null;
+        let regRole = 'child';
+
+        // NAVIGATION
+        function navigateTo(screenId) {
+            document.querySelectorAll('[id^="screen-"]').forEach(s => s.classList.add('hidden'));
+            const target = document.getElementById(`screen-${screenId}`);
+            if (target) target.classList.remove('hidden');
+            window.scrollTo(0,0);
+        }
+
+        function setRegRole(role) {
+            regRole = role;
+            const childBtn = document.getElementById('reg-role-child');
+            const doctorBtn = document.getElementById('reg-role-doctor');
+            const idField = document.getElementById('doctor-id-field');
+
+            if (role === 'child') {
+                childBtn.classList.add('bg-white', 'shadow-sm', 'text-blue-900');
+                doctorBtn.classList.remove('bg-white', 'shadow-sm', 'text-blue-900');
+                idField.classList.remove('hidden');
+            } else {
+                doctorBtn.classList.add('bg-white', 'shadow-sm', 'text-teal-900');
+                childBtn.classList.remove('bg-white', 'shadow-sm', 'text-blue-900');
+                idField.classList.add('hidden');
+            }
+        }
+
+        // AUTH
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                db.collection('users').where('uid', '==', user.uid).get().then(snapshot => {
+                    if (!snapshot.empty) {
+                        userData = snapshot.docs[0].data();
+                        currentRole = userData.role;
+                        if (currentRole === 'child') {
+                            if (userData.isApproved) {
+                                navigateTo('dashboard-child');
+                                setupChildDashboard();
+                            } else {
+                                alert("Account pending doctor approval. Please wait!");
+                                auth.signOut();
+                            }
+                        } else {
+                            navigateTo('dashboard-doctor');
+                            setupDoctorDashboard();
+                        }
+                    }
+                });
+            } else {
+                navigateTo('start');
+            }
+        });
+
+        function handleLogin(role) {
+            const email = document.getElementById(`${role}-email`).value;
+            const pass = document.getElementById(`${role}-password`).value;
+            auth.signInWithEmailAndPassword(email, pass).catch(e => alert(e.message));
+        }
+
+        function logout() {
+            auth.signOut().then(() => navigateTo('start'));
+        }
+
+        // REGISTRATION (Sequential ID Logic like App)
+        async function handleRegister() {
+            const name = document.getElementById('reg-name').value;
+            const email = document.getElementById('reg-email').value;
+            const pass = document.getElementById('reg-password').value;
+            const doctorId = document.getElementById('reg-doctor-id').value;
+
+            if (!name || !email || !pass) return alert("Fill all fields!");
+
+            if (regRole === 'doctor') {
+                // Get next ID
+                const counterRef = db.collection('counters').doc('doctor_id');
+                const nextId = await db.runTransaction(async (transaction) => {
+                    const snap = await transaction.get(counterRef);
+                    let id = 1176; // Start new at 1176 as requested
+                    if (snap.exists) id = snap.data().last_id + 1;
+                    transaction.set(counterRef, { last_id: id });
+                    return id;
+                });
+
+                auth.createUserWithEmailAndPassword(email, pass).then(cred => {
+                    const newUser = {
+                        uid: cred.user.uid, name, email, role: 'doctor',
+                        doctorId: String(nextId), isApproved: true, points: 0
+                    };
+                    db.collection('users').doc(String(nextId)).set(newUser).then(() => {
+                        alert(`Registration Successful! Your ID is: ${nextId}`);
+                    });
+                });
+            } else {
+                if (!doctorId) return alert("Doctor ID required!");
+                // Validate Doctor exists
+                const docSnap = await db.collection('users').where('doctorId', '==', doctorId).where('role', '==', 'doctor').get();
+                if (docSnap.empty) return alert("Invalid Doctor ID!");
+
+                auth.createUserWithEmailAndPassword(email, pass).then(cred => {
+                    const newUser = {
+                        uid: cred.user.uid, name, email, role: 'child',
+                        doctorId: doctorId, isApproved: false, points: 0, streak: 0
+                    };
+                    db.collection('users').doc(cred.user.uid).set(newUser).then(() => {
+                        alert("Registration Successful! Wait for doctor approval.");
+                        logout();
+                    });
+                });
+            }
+        }
+
+        // CHILD DASHBOARD LOGIC
+        function setupChildDashboard() {
+            document.getElementById('child-welcome-msg').innerText = `Hi, ${userData.name}!`;
+            document.getElementById('child-streak').innerText = `${userData.streak || 0} Days`;
+
+            // Listen for latest appointment
+            db.collection('appointments').where('childId', '==', userData.uid).orderBy('date', 'desc').limit(1).onSnapshot(s => {
+                if (!s.empty) {
+                    const appt = s.docs[0].data();
+                    if (appt.date > Date.now()) {
+                        const date = new Date(appt.date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                        document.getElementById('child-appt-card').classList.remove('hidden');
+                        document.getElementById('child-appt-details').innerText = `${appt.type}: ${date}`;
+                    }
+                }
+            });
+        }
+
+        // DOCTOR DASHBOARD LOGIC
+        let allApprovedPatients = [];
+        function setupDoctorDashboard() {
+            document.getElementById('doctor-welcome-msg').innerText = `Welcome, Dr. ${userData.name}`;
+            document.getElementById('doctor-id-display').innerText = `Your Doctor ID: ${userData.doctorId}`;
+
+            const seqId = userData.doctorId;
+
+            // Stats Listener
+            db.collection('users').where('doctorId', '==', seqId).where('role', '==', 'child').onSnapshot(s => {
+                const pending = [];
+                const approved = [];
+                s.forEach(doc => {
+                    const d = doc.data();
+                    if (d.isApproved) approved.push(d); else pending.push(d);
+                });
+                allApprovedPatients = approved;
+                document.getElementById('doc-stat-patients').innerText = approved.length;
+                document.getElementById('doc-stat-approvals').innerText = pending.length;
+
+                renderMiniPatients(approved);
+                updateApptDropdown(approved);
+            });
+
+            // Appointments Listener
+            db.collection('appointments').where('doctorId', '==', seqId).orderBy('date', 'asc').onSnapshot(s => {
+                document.getElementById('doc-stat-appointments').innerText = s.size;
+                renderMiniAppointments(s);
+            });
+        }
+
+        function renderMiniPatients(users) {
+            const list = document.getElementById('doc-mini-patients');
+            list.innerHTML = users.length ? '' : '<div class="p-4 text-white/30 italic">No patients yet</div>';
+            users.slice(0, 3).forEach(u => {
+                list.innerHTML += `
+                    <div class="bg-white p-4 rounded-2xl flex justify-between items-center">
+                        <p class="font-black text-slate-800">${u.name}</p>
+                        <p class="text-xs font-black text-teal-600 bg-teal-50 px-2 py-1 rounded-lg">${u.points} pts</p>
+                    </div>
+                `;
+            });
+        }
+
+        function renderMiniAppointments(snap) {
+            const list = document.getElementById('doc-mini-appointments');
+            list.innerHTML = snap.empty ? '<div class="p-4 text-white/30 italic">No visits scheduled</div>' : '';
+            snap.docs.slice(0, 2).forEach(doc => {
+                const d = doc.data();
+                const date = new Date(d.date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                list.innerHTML += `
+                    <div class="bg-white p-4 rounded-2xl">
+                        <p class="text-[10px] font-black text-teal-600 uppercase">${d.type}</p>
+                        <p class="font-black text-slate-800">${d.childName}</p>
+                        <p class="text-xs text-slate-400 font-bold mt-1">🕒 ${date}</p>
+                    </div>
+                `;
+            });
+        }
+
+        // SUB-PAGES MODAL
+        function showSubPage(type) {
+            const modal = document.getElementById('modal-subpage');
+            const title = document.getElementById('subpage-title');
+            const content = document.getElementById('subpage-content');
+            modal.classList.remove('hidden');
+
+            if (type === 'approvals') {
+                title.innerText = "Pending Approvals";
+                content.innerHTML = '<p class="text-slate-400">Loading requests...</p>';
+                db.collection('users').where('doctorId', '==', userData.doctorId).where('isApproved', '==', false).get().then(s => {
+                    content.innerHTML = s.empty ? '<p>No new requests!</p>' : '';
+                    s.forEach(doc => {
+                        const u = doc.data();
+                        content.innerHTML += `
+                            <div class="bg-slate-50 p-6 rounded-3xl flex justify-between items-center border border-slate-100">
+                                <div><p class="font-black text-slate-800 text-xl">${u.name}</p><p class="text-slate-400">${u.email}</p></div>
+                                <button onclick="approveUser('${u.uid}')" class="bg-orange-500 text-white px-8 py-3 rounded-2xl font-black shadow-lg">APPROVE</button>
+                            </div>
+                        `;
+                    });
+                });
+            } else if (type === 'patients') {
+                title.innerText = "Patient List";
+                content.innerHTML = '<div class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>';
+                const grid = content.querySelector('div');
+                allApprovedPatients.forEach(u => {
+                    grid.innerHTML += `
+                        <div class="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex justify-between items-center">
+                            <div><p class="font-black text-slate-800">${u.name}</p><p class="text-xs text-slate-400">${u.email}</p></div>
+                            <div class="text-right"><p class="text-2xl font-black text-teal-600">${u.points}</p><p class="text-[8px] font-black uppercase text-slate-300">POINTS</p></div>
+                        </div>
+                    `;
+                });
+            } else if (type === 'appointments') {
+                title.innerText = "All Appointments";
+                db.collection('appointments').where('doctorId', '==', userData.doctorId).orderBy('date', 'asc').get().then(s => {
+                    content.innerHTML = s.empty ? '<p>No visits scheduled.</p>' : '';
+                    s.forEach(doc => {
+                        const d = doc.data();
+                        const date = new Date(d.date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                        content.innerHTML += `
+                            <div class="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex justify-between items-center">
+                                <div><p class="text-xs font-black text-teal-600 uppercase">${d.type}</p><p class="font-black text-slate-800 text-xl">${d.childName}</p></div>
+                                <div class="text-right"><p class="font-black text-slate-600">🕒 ${date}</p></div>
+                            </div>
+                        `;
+                    });
+                });
+            }
+        }
+
+        function closeSubPage() { document.getElementById('modal-subpage').classList.add('hidden'); }
+        function approveUser(uid) {
+            db.collection('users').doc(uid).update({ isApproved: true }).then(() => { alert("Approved!"); closeSubPage(); });
+        }
+
+        // APPOINTMENT MODAL
+        function openAppointmentModal() {
+            document.getElementById('modal-add-appt').classList.remove('hidden');
+            document.getElementById('modal-add-appt').classList.add('flex');
+        }
+        function closeAppointmentModal() { document.getElementById('modal-add-appt').classList.add('hidden'); }
+        function updateApptDropdown(users) {
+            const select = document.getElementById('appt-patient');
+            select.innerHTML = '<option value="">Select Patient...</option>';
+            users.forEach(u => select.innerHTML += `<option value="${u.uid}|${u.name}">${u.name}</option>`);
+        }
+        function saveAppointment() {
+            const p = document.getElementById('appt-patient').value.split('|');
+            const type = document.getElementById('appt-type').value;
+            const date = document.getElementById('appt-date').value;
+            if (!p[0] || !type || !date) return alert("Fill all fields!");
+            db.collection('appointments').add({
+                childId: p[0], childName: p[1], doctorId: userData.doctorId,
+                type, date: new Date(date).getTime(), status: 'upcoming'
+            }).then(() => { alert("Scheduled!"); closeAppointmentModal(); });
+        }
+
+        function handleForgot() {
+            const email = document.getElementById('forgot-email').value;
+            auth.sendPasswordResetEmail(email).then(() => alert("Email sent!")).catch(e => alert(e.message));
+        }
+    </script>
+</body>
+</html>

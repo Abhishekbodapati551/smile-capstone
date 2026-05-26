@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "smile-ce764"
+  },
+  "targets": {
+    "smile-ce764": {
+      "hosting": {
+        "main": [
+          "smile-ce764"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

@@ -161,11 +161,16 @@ public class DoctorAppointmentManagerActivity extends AppCompatActivity {
     private void saveAppointment(Appointment app) {
         new Thread(() -> {
             db.appDao().insertAppointment(app);
-            // In a real app, sync with Firestore here
-            runOnUiThread(() -> {
-                Toast.makeText(this, "Appointment Scheduled!", Toast.LENGTH_SHORT).show();
-                loadAppointments();
-            });
+            
+            // Sync with Firestore so patient gets a notification
+            dbFirestore.collection("appointments").add(app)
+                .addOnSuccessListener(docRef -> {
+                    // Update the appointment with the Firestore ID if needed
+                    runOnUiThread(() -> {
+                        Toast.makeText(this, "Appointment Scheduled & Synced!", Toast.LENGTH_SHORT).show();
+                        loadAppointments();
+                    });
+                });
         }).start();
     }
 
@@ -182,9 +187,22 @@ public class DoctorAppointmentManagerActivity extends AppCompatActivity {
                 calendar.set(Calendar.HOUR_OF_DAY, hourOfDay);
                 calendar.set(Calendar.MINUTE, minute);
 
-                app.date = calendar.getTimeInMillis();
+                long newDate = calendar.getTimeInMillis();
                 new Thread(() -> {
+                    app.date = newDate;
                     db.appDao().updateAppointment(app);
+                    
+                    // Update in Firestore
+                    dbFirestore.collection("appointments")
+                        .whereEqualTo("childId", app.childId)
+                        .whereEqualTo("date", app.date) // This might be tricky if not exact, better use a firestoreId
+                        .get()
+                        .addOnSuccessListener(querySnapshot -> {
+                            if (!querySnapshot.isEmpty()) {
+                                querySnapshot.getDocuments().get(0).getReference().update("date", newDate);
+                            }
+                        });
+
                     runOnUiThread(() -> {
                         Toast.makeText(this, "Appointment Rescheduled!", Toast.LENGTH_SHORT).show();
                         loadAppointments();

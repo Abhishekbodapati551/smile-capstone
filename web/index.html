@@ -359,49 +359,68 @@
 
         // REGISTRATION (Sequential ID Logic like App)
         async function handleRegister() {
-            const name = document.getElementById('reg-name').value;
-            const email = document.getElementById('reg-email').value;
+            const name = document.getElementById('reg-name').value.trim();
+            const email = document.getElementById('reg-email').value.trim();
             const pass = document.getElementById('reg-password').value;
-            const doctorId = document.getElementById('reg-doctor-id').value;
+            const doctorId = document.getElementById('reg-doctor-id').value.trim();
 
-            if (!name || !email || !pass) return alert("Fill all fields!");
+            if (!name || !email || !pass) return alert("Please fill all required fields!");
 
-            if (regRole === 'doctor') {
-                // Get next ID
-                const counterRef = db.collection('counters').doc('doctor_id');
-                const nextId = await db.runTransaction(async (transaction) => {
-                    const snap = await transaction.get(counterRef);
-                    let id = 1176; // Start new at 1176 as requested
-                    if (snap.exists) id = snap.data().last_id + 1;
-                    transaction.set(counterRef, { last_id: id });
-                    return id;
-                });
-
-                auth.createUserWithEmailAndPassword(email, pass).then(cred => {
-                    const newUser = {
-                        uid: cred.user.uid, name, email, role: 'doctor',
-                        doctorId: String(nextId), isApproved: true, points: 0
-                    };
-                    db.collection('users').doc(String(nextId)).set(newUser).then(() => {
-                        alert(`Registration Successful! Your ID is: ${nextId}`);
+            try {
+                if (regRole === 'doctor') {
+                    console.log("Generating Doctor ID...");
+                    // Get next ID
+                    const counterRef = db.collection('counters').doc('doctor_id');
+                    const nextId = await db.runTransaction(async (transaction) => {
+                        const snap = await transaction.get(counterRef);
+                        let id = 1176;
+                        if (snap.exists && snap.data().last_id) id = snap.data().last_id + 1;
+                        transaction.set(counterRef, { last_id: id });
+                        return id;
                     });
-                });
-            } else {
-                if (!doctorId) return alert("Doctor ID required!");
-                // Validate Doctor exists
-                const docSnap = await db.collection('users').where('doctorId', '==', doctorId).where('role', '==', 'doctor').get();
-                if (docSnap.empty) return alert("Invalid Doctor ID!");
 
-                auth.createUserWithEmailAndPassword(email, pass).then(cred => {
+                    console.log(`ID Generated: ${nextId}. Creating Auth User...`);
+                    const cred = await auth.createUserWithEmailAndPassword(email, pass);
+
                     const newUser = {
-                        uid: cred.user.uid, name, email, role: 'child',
-                        doctorId: doctorId, isApproved: false, points: 0, streak: 0
+                        uid: cred.user.uid,
+                        name,
+                        email,
+                        role: 'doctor',
+                        doctorId: String(nextId),
+                        isApproved: false, // Matches app: Admin must approve
+                        points: 0
                     };
-                    db.collection('users').doc(cred.user.uid).set(newUser).then(() => {
-                        alert("Registration Successful! Wait for doctor approval.");
-                        logout();
-                    });
-                });
+
+                    await db.collection('users').doc(String(nextId)).set(newUser);
+                    alert(`Doctor Registration Successful! Your ID is: ${nextId}. Please wait for admin approval before logging in.`);
+                    navigateTo('start');
+                } else {
+                    if (!doctorId) return alert("Doctor ID required for patients!");
+
+                    console.log("Validating Doctor ID...");
+                    const docSnap = await db.collection('users').where('doctorId', '==', doctorId).where('role', '==', 'doctor').get();
+                    if (docSnap.empty) return alert("Invalid Doctor ID! Please check with your doctor.");
+
+                    const cred = await auth.createUserWithEmailAndPassword(email, pass);
+                    const newUser = {
+                        uid: cred.user.uid,
+                        name,
+                        email,
+                        role: 'child',
+                        doctorId: doctorId,
+                        isApproved: false,
+                        points: 0,
+                        streak: 0
+                    };
+
+                    await db.collection('users').doc(cred.user.uid).set(newUser);
+                    alert("Patient Registration Successful! Please wait for your doctor to approve you.");
+                    logout();
+                }
+            } catch (error) {
+                console.error("Registration Error:", error);
+                alert("Sign-up Failed: " + error.message);
             }
         }
 

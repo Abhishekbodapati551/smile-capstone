@@ -117,32 +117,45 @@ public class DoctorLoginActivity extends AppCompatActivity {
 
     private void handleDoctorLoginSuccess(DocumentSnapshot documentSnapshot, String uid, String email, String password) {
         String role = documentSnapshot.getString("role");
+        Boolean isApproved = documentSnapshot.getBoolean("isApproved");
+
         if ("doctor".equals(role)) {
-            String sequentialId = documentSnapshot.getString("doctorId");
-            // Update local DB
-            new Thread(() -> {
-                User existingUser = db.appDao().getUserById(uid);
-                if (existingUser == null) {
-                    User user = new User(uid, documentSnapshot.getString("name"), email, password, role);
-                    user.doctorId = sequentialId;
-                    db.appDao().insertUser(user);
-                } else {
-                    existingUser.name = documentSnapshot.getString("name");
-                    existingUser.email = email;
-                    existingUser.password = password;
-                    existingUser.doctorId = sequentialId;
-                    db.appDao().updateUser(existingUser);
-                }
-                
-                runOnUiThread(() -> {
-                    Intent intent = new Intent(DoctorLoginActivity.this, DoctorDashboardActivity.class);
-                    intent.putExtra("USER_ID", uid);
-                    startActivity(intent);
-                    finish();
-                });
-            }).start();
+            if (isApproved != null && isApproved) {
+                String sequentialId = documentSnapshot.getString("doctorId");
+                // Update local DB
+                new Thread(() -> {
+                    User existingUser = db.appDao().getUserById(uid);
+                    if (existingUser == null) {
+                        User user = new User(uid, documentSnapshot.getString("name"), email, password, role);
+                        user.doctorId = sequentialId;
+                        user.isApproved = true;
+                        db.appDao().insertUser(user);
+                    } else {
+                        existingUser.name = documentSnapshot.getString("name");
+                        existingUser.email = email;
+                        existingUser.password = password;
+                        existingUser.doctorId = sequentialId;
+                        existingUser.isApproved = true;
+                        db.appDao().updateUser(existingUser);
+                    }
+                    
+                    runOnUiThread(() -> {
+                        Intent intent = new Intent(DoctorLoginActivity.this, DoctorDashboardActivity.class);
+                        intent.putExtra("USER_ID", uid);
+                        startActivity(intent);
+                        finish();
+                    });
+                }).start();
+            } else {
+                mAuth.signOut();
+                findViewById(R.id.login_button).setEnabled(true);
+                findViewById(R.id.login_progress).setVisibility(android.view.View.GONE);
+                Toast.makeText(this, "Account pending admin approval", Toast.LENGTH_LONG).show();
+            }
         } else {
             mAuth.signOut();
+            findViewById(R.id.login_button).setEnabled(true);
+            findViewById(R.id.login_progress).setVisibility(android.view.View.GONE);
             Toast.makeText(this, "This account is not a doctor account", Toast.LENGTH_SHORT).show();
         }
     }

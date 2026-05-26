@@ -51,6 +51,7 @@ public class RegisterActivity extends AppCompatActivity {
         });
 
         findViewById(R.id.register_button).setOnClickListener(v -> {
+            v.setEnabled(false); // Prevent double clicks
             String name = nameEdit.getText().toString().trim();
             String email = emailEdit.getText().toString().trim();
             String password = passwordEdit.getText().toString().trim();
@@ -58,33 +59,30 @@ public class RegisterActivity extends AppCompatActivity {
 
             if (name.isEmpty() || email.isEmpty() || password.isEmpty()) {
                 Toast.makeText(this, "Please fill all fields", Toast.LENGTH_SHORT).show();
+                v.setEnabled(true);
                 return;
             }
 
-            if (selectedRole.equals("child") && doctorId.isEmpty()) {
-                Toast.makeText(this, "Doctor ID is required for Children", Toast.LENGTH_SHORT).show();
-                return;
-            }
+            Toast.makeText(this, "Starting registration...", Toast.LENGTH_SHORT).show();
 
             if (selectedRole.equals("child")) {
-                // Validate if doctorId exists in Firestore before creating the account
-                String finalDoctorId = doctorId.trim(); // Ensure no trailing spaces
-                
-                // Search for the doctor using the sequential ID field
+                // ... same child logic ...
+                String finalDoctorId = doctorId.trim();
                 dbFirestore.collection("users")
                     .whereEqualTo("doctorId", finalDoctorId)
                     .whereEqualTo("role", "doctor")
                     .get()
                     .addOnSuccessListener(querySnapshot -> {
                         if (!querySnapshot.isEmpty()) {
-                            // Doctor found!
                             performRegistration(name, email, password, finalDoctorId);
                         } else {
-                            Toast.makeText(this, "Doctor ID " + finalDoctorId + " not found. Please ask your doctor for their 4-digit ID.", Toast.LENGTH_LONG).show();
+                            Toast.makeText(this, "Doctor ID " + finalDoctorId + " not found.", Toast.LENGTH_LONG).show();
+                            v.setEnabled(true);
                         }
                     })
                     .addOnFailureListener(e -> {
-                        Toast.makeText(this, "Error validating Doctor ID: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, "Connection Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                        v.setEnabled(true);
                     });
             } else {
                 performRegistration(name, email, password, null);
@@ -102,7 +100,7 @@ public class RegisterActivity extends AppCompatActivity {
                 com.google.firebase.firestore.DocumentSnapshot snapshot = transaction.get(counterRef);
                 
                 long nextId = 1176; // Start new registrations from 1176
-                if (snapshot.exists()) {
+                if (snapshot.exists() && snapshot.contains("last_id")) {
                     Long currentId = snapshot.getLong("last_id");
                     if (currentId != null) {
                         nextId = currentId + 1;
@@ -114,7 +112,11 @@ public class RegisterActivity extends AppCompatActivity {
             }).addOnSuccessListener(sequentialId -> {
                 createAuthUser(name, email, password, sequentialId);
             }).addOnFailureListener(e -> {
-                Toast.makeText(this, "Failed to generate Doctor ID: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "Database ID Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    // Log the error for better debugging
+                    android.util.Log.e("RegisterActivity", "Transaction failed", e);
+                });
             });
         } else {
             // Children use their Firebase UID, but linked to a doctor's sequential ID
@@ -127,15 +129,7 @@ public class RegisterActivity extends AppCompatActivity {
             .addOnCompleteListener(this, task -> {
                 if (task.isSuccessful()) {
                     String uid = mAuth.getCurrentUser().getUid();
-                    String finalDoctorIdForRecord;
-                    
-                    if (selectedRole.equals("doctor")) {
-                        // For doctors, their "public" ID is the sequential one
-                        finalDoctorIdForRecord = doctorIdOrSequentialId;
-                    } else {
-                        // For children, doctorId is the one they entered
-                        finalDoctorIdForRecord = doctorIdOrSequentialId;
-                    }
+                    String finalDoctorIdForRecord = doctorIdOrSequentialId;
 
                     // Create user object for Firestore
                     Map<String, Object> user = new HashMap<>();
@@ -143,55 +137,43 @@ public class RegisterActivity extends AppCompatActivity {
                     user.put("name", name);
                     user.put("email", email);
                     user.put("role", selectedRole);
-                    user.put("isApproved", selectedRole.equals("doctor"));
+                    user.put("isApproved", false); // Admin must approve in console
                     user.put("points", 0);
                     user.put("streak", 0);
                     user.put("stars", 0);
-
-                    if (selectedRole.equals("doctor")) {
-                        user.put("doctorId", finalDoctorIdForRecord);
-                    } else {
-                        user.put("doctorId", finalDoctorIdForRecord);
-                    }
-
-                    // For Doctors, we use their Sequential ID (e.g., 1175) as the Document ID 
-                    // AND as a field. For Children, we use their Firebase UID.
-                    String documentId = selectedRole.equals("doctor") ? finalDoctorIdForRecord : uid;
-
-                    // Update user object to include the UID properly for Doctors
-                    user.put("uid", uid); 
                     user.put("doctorId", finalDoctorIdForRecord);
+
+                    // For Doctors, we use their Sequential ID as the Document ID
+                    String documentId = selectedRole.equals("doctor") ? finalDoctorIdForRecord : uid;
 
                     dbFirestore.collection("users").document(documentId)
                         .set(user)
                         .addOnSuccessListener(aVoid -> {
-                            // Also sync to local DB
+                            // Sync to local DB
                             new Thread(() -> {
                                 User localUser = new User(uid, name, email, password, selectedRole);
                                 localUser.doctorId = finalDoctorIdForRecord;
-                                localUser.isApproved = selectedRole.equals("doctor");
+                                localUser.isApproved = false;
                                 db.appDao().insertUser(localUser);
                                 
                                 runOnUiThread(() -> {
-                                    if (selectedRole.equals("child")) {
-                                        Toast.makeText(this, "Registration Successful! Please wait for doctor approval.", Toast.LENGTH_LONG).show();
-                                        finish();
-                                    } else {
-                                        Toast.makeText(this, "Doctor Registration Successful! Your ID is: " + finalDoctorIdForRecord, Toast.LENGTH_LONG).show();
-                                        Intent intent = new Intent(this, DoctorDashboardActivity.class);
-                                        intent.putExtra("USER_ID", uid);
-                                        intent.putExtra("DOCTOR_ID_SEQ", finalDoctorIdForRecord);
-                                        startActivity(intent);
-                                        finish();
-                                    }
+                                    Toast.makeText(this, "Registration Success! Waiting for Admin approval.", Toast.LENGTH_LONG).show();
+                                    finish();
                                 });
                             }).start();
                         })
                         .addOnFailureListener(e -> {
-                            Toast.makeText(this, "Firestore Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            runOnUiThread(() -> {
+                                Toast.makeText(this, "Firestore Save Failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                                findViewById(R.id.register_button).setEnabled(true);
+                            });
                         });
                 } else {
-                    Toast.makeText(this, "Auth Error: " + task.getException().getMessage(), Toast.LENGTH_SHORT).show();
+                    runOnUiThread(() -> {
+                        String error = task.getException() != null ? task.getException().getMessage() : "Unknown Auth Error";
+                        Toast.makeText(this, "Auth Failed: " + error, Toast.LENGTH_LONG).show();
+                        findViewById(R.id.register_button).setEnabled(true);
+                    });
                 }
             });
     }

@@ -17,7 +17,8 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.SmileApp">
+        android:theme="@style/Theme.SmileApp"
+        android:usesCleartextTraffic="true">
         <activity android:name=".RewardsAwaitActivity" />
         <activity
             android:name=".MainActivity"

@@ -13,3 +13,7 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Local Docker Data
+jenkins-data/
+storage-data/

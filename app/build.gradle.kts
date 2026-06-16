@@ -77,6 +77,9 @@ dependencies {
     implementation("androidx.camera:camera-video:$cameraxVersion")
     implementation("androidx.camera:camera-view:$cameraxVersion")
 
+    // Local Storage (MinIO/S3)
+    implementation("com.amazonaws:aws-android-sdk-s3:2.73.0")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.espresso.core)
     androidTestImplementation(libs.ext.junit)

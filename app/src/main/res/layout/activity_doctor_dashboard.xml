@@ -62,6 +62,21 @@
                     app:layout_constraintTop_toBottomOf="@id/doctor_subtitle" />
 
                 <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_edit_profile"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp"
+                    android:text="Profile"
+                    android:textAllCaps="false"
+                    android:textColor="@color/doctor_teal"
+                    android:textSize="12sp"
+                    app:icon="@android:drawable/ic_menu_edit"
+                    app:iconTint="@color/doctor_teal"
+                    app:layout_constraintEnd_toStartOf="@id/logout_btn"
+                    app:layout_constraintTop_toTopOf="parent" />
+
+                <com.google.android.material.button.MaterialButton
                     android:id="@+id/logout_btn"
                     style="@style/Widget.MaterialComponents.Button.TextButton"
                     android:layout_width="wrap_content"
@@ -355,7 +370,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/label_recent_patients"
+                        android:text="My Patients"
                         android:textColor="@color/white"
                         android:textSize="14sp"
                         android:textStyle="bold"
@@ -376,7 +391,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:backgroundTint="@color/action_green"
-                    android:text="@string/btn_view_all_patients"
+                    android:text="My Patients"
                     android:textAllCaps="false"
                     android:textSize="12sp"
                     app:cornerRadius="12dp" />

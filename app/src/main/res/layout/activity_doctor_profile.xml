@@ -83,6 +83,28 @@
                     android:textSize="12sp"
                     android:textStyle="italic" />
 
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/doctor_id_layout"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    app:boxBackgroundMode="outline"
+                    app:boxCornerRadiusBottomEnd="12dp"
+                    app:boxCornerRadiusBottomStart="12dp"
+                    app:boxCornerRadiusTopEnd="12dp"
+                    app:boxCornerRadiusTopStart="12dp"
+                    android:textColorHint="#DDDDDD"
+                    android:hint="Set 4-Digit Doctor ID">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/doctor_id_edit"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/white"
+                        android:inputType="number"
+                        android:maxLength="4" />
+                </com.google.android.material.textfield.TextInputLayout>
+
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="1dp"

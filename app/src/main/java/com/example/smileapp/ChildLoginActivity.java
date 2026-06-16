@@ -6,16 +6,12 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.textfield.TextInputEditText;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.firestore.FirebaseFirestore;
 import com.example.smileapp.database.AppDatabase;
 import com.example.smileapp.models.User;
 
 public class ChildLoginActivity extends AppCompatActivity {
 
     private AppDatabase db;
-    private FirebaseAuth mAuth;
-    private FirebaseFirestore dbFirestore;
     private SessionManager sessionManager;
 
     @Override
@@ -24,8 +20,6 @@ public class ChildLoginActivity extends AppCompatActivity {
         setContentView(R.layout.activity_child_login);
 
         db = AppDatabase.getInstance(this);
-        mAuth = FirebaseAuth.getInstance();
-        dbFirestore = FirebaseFirestore.getInstance();
         sessionManager = new SessionManager(this);
 
         TextInputEditText emailEdit = findViewById(R.id.username_edit_text);
@@ -50,78 +44,46 @@ public class ChildLoginActivity extends AppCompatActivity {
             loginButton.setEnabled(false);
             progressBar.setVisibility(android.view.View.VISIBLE);
 
-            mAuth.signInWithEmailAndPassword(email, password)
-                .addOnCompleteListener(this, task -> {
-                    if (task.isSuccessful()) {
-                        String uid = mAuth.getCurrentUser().getUid();
-                        
-                        // Save credentials for next time
-                        sessionManager.saveCredentials(email, password);
+            new Thread(() -> {
+                try {
+                    User user = SupabaseAuthHelper.signInBlocking(email, password);
+                    
+                    if ("child".equals(user.role)) {
+                        if (user.isApproved) {
+                            // Update local DB
+                            db.appDao().insertUser(user); // Use insertUser (will update if exists if using REPLACE strategy or we can use update)
+                            
+                            sessionManager.saveCredentials(email, password);
+                            sessionManager.createLoginSession(user.uid, user.role);
 
-                        // Verify role and approval in Firestore
-                        dbFirestore.collection("users").document(uid).get()
-                            .addOnSuccessListener(documentSnapshot -> {
-                                if (documentSnapshot.exists()) {
-                                    String role = documentSnapshot.getString("role");
-                                    Boolean isApproved = documentSnapshot.getBoolean("isApproved");
-                                    
-                                    if ("child".equals(role)) {
-                                        if (isApproved != null && isApproved) {
-                                            // Update local DB
-                                            new Thread(() -> {
-                                                User existingUser = db.appDao().getUserById(uid);
-                                                if (existingUser == null) {
-                                                    User user = new User(uid, documentSnapshot.getString("name"), email, password, role);
-                                                    user.isApproved = true;
-                                                    user.doctorId = documentSnapshot.getString("doctorId");
-                                                    db.appDao().insertUser(user);
-                                                } else {
-                                                    existingUser.name = documentSnapshot.getString("name");
-                                                    existingUser.email = email;
-                                                    existingUser.password = password;
-                                                    existingUser.isApproved = true;
-                                                    existingUser.doctorId = documentSnapshot.getString("doctorId");
-                                                    db.appDao().updateUser(existingUser);
-                                                }
-                                                
-                                                runOnUiThread(() -> {
-                                                    Intent intent = new Intent(ChildLoginActivity.this, ChildDashboardActivity.class);
-                                                    intent.putExtra("USER_ID", uid);
-                                                    startActivity(intent);
-                                                    finish();
-                                                });
-                                            }).start();
-                                        } else {
-                                            mAuth.signOut();
-                                            loginButton.setEnabled(true);
-                                            progressBar.setVisibility(android.view.View.GONE);
-                                            Toast.makeText(this, "Account pending doctor approval", Toast.LENGTH_LONG).show();
-                                        }
-                                    } else {
-                                        mAuth.signOut();
-                                        loginButton.setEnabled(true);
-                                        progressBar.setVisibility(android.view.View.GONE);
-                                        Toast.makeText(this, "This account is not a child account", Toast.LENGTH_SHORT).show();
-                                    }
-                                } else {
-                                    mAuth.signOut();
-                                    loginButton.setEnabled(true);
-                                    progressBar.setVisibility(android.view.View.GONE);
-                                    Toast.makeText(this, "User data not found in Firestore. Please register again.", Toast.LENGTH_LONG).show();
-                                }
-                            })
-                            .addOnFailureListener(e -> {
-                                mAuth.signOut();
+                            runOnUiThread(() -> {
+                                Intent intent = new Intent(ChildLoginActivity.this, ChildDashboardActivity.class);
+                                intent.putExtra("USER_ID", user.uid);
+                                startActivity(intent);
+                                finish();
+                            });
+                        } else {
+                            runOnUiThread(() -> {
                                 loginButton.setEnabled(true);
                                 progressBar.setVisibility(android.view.View.GONE);
-                                Toast.makeText(this, "Firestore Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                                Toast.makeText(this, "Account pending approval", Toast.LENGTH_LONG).show();
                             });
+                        }
                     } else {
+                        runOnUiThread(() -> {
+                            loginButton.setEnabled(true);
+                            progressBar.setVisibility(android.view.View.GONE);
+                            Toast.makeText(this, "This is not a patient account", Toast.LENGTH_SHORT).show();
+                        });
+                    }
+                } catch (Exception e) {
+                    runOnUiThread(() -> {
                         loginButton.setEnabled(true);
                         progressBar.setVisibility(android.view.View.GONE);
-                        Toast.makeText(this, "Login Failed: " + task.getException().getMessage(), Toast.LENGTH_SHORT).show();
-                    }
-                });
+                        Toast.makeText(this, "Login Failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    });
+                }
+            }).start();
         });
 
         findViewById(R.id.signup_link).setOnClickListener(v -> {

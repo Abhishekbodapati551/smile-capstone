@@ -8,7 +8,7 @@ import com.example.smileapp.models.Appointment;
 import com.example.smileapp.models.BrushingLog;
 import com.example.smileapp.models.User;
 
-@Database(entities = {User.class, Appointment.class, BrushingLog.class}, version = 8)
+@Database(entities = {User.class, Appointment.class, BrushingLog.class}, version = 11)
 public abstract class AppDatabase extends RoomDatabase {
     private static AppDatabase instance;
 

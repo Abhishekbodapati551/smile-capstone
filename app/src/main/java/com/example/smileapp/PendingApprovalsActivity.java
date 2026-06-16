@@ -1,7 +1,7 @@
 package com.example.smileapp;
 
-import android.content.Intent;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -14,19 +14,17 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.example.smileapp.database.AppDatabase;
 import com.example.smileapp.models.User;
 import com.google.android.material.button.MaterialButton;
-import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.DocumentSnapshot;
 import java.util.ArrayList;
 import java.util.List;
 
 public class PendingApprovalsActivity extends AppCompatActivity {
 
     private AppDatabase db;
-    private RecyclerView recyclerView;
-    private PendingAdapter adapter;
-    private FirebaseFirestore dbFirestore;
-    private String doctorId;
+    private RecyclerView pendingRecycler, totalPatientsRecycler;
+    private UserAdapter pendingAdapter, totalAdapter;
+    private String doctorId; 
     private List<User> pendingUsers = new ArrayList<>();
+    private List<User> approvedUsers = new ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -34,120 +32,124 @@ public class PendingApprovalsActivity extends AppCompatActivity {
         setContentView(R.layout.activity_pending_approvals);
 
         db = AppDatabase.getInstance(this);
-        dbFirestore = FirebaseFirestore.getInstance();
-        // Retrieve the doctor ID (sequential ID) passed from the dashboard
         doctorId = getIntent().getStringExtra("DOCTOR_ID");
+
         if (doctorId == null) {
-            Toast.makeText(this, "Error: Doctor ID missing", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Doctor ID not found", Toast.LENGTH_SHORT).show();
             finish();
             return;
         }
 
-        recyclerView = findViewById(R.id.pending_recycler_view);
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        pendingRecycler = findViewById(R.id.pending_recycler_view);
+        totalPatientsRecycler = findViewById(R.id.total_patients_recycler);
 
-        adapter = new PendingAdapter(pendingUsers);
-        recyclerView.setAdapter(adapter);
+        pendingRecycler.setLayoutManager(new LinearLayoutManager(this));
+        totalPatientsRecycler.setLayoutManager(new LinearLayoutManager(this));
 
-        // Directly load pending users using the provided doctorId (sequential ID)
-        loadPendingUsers();
+        pendingAdapter = new UserAdapter(pendingUsers, true);
+        totalAdapter = new UserAdapter(approvedUsers, false);
+
+        pendingRecycler.setAdapter(pendingAdapter);
+        totalPatientsRecycler.setAdapter(totalAdapter);
+
+        loadAllData();
     }
 
-    private void loadPendingUsers() {
-        dbFirestore.collection("users")
-            .whereEqualTo("role", "child")
-            .whereEqualTo("isApproved", false)
-            .whereEqualTo("doctorId", doctorId)
-            .get()
-            .addOnSuccessListener(queryDocumentSnapshots -> {
-                pendingUsers.clear();
-                for (DocumentSnapshot doc : queryDocumentSnapshots) {
-                    User user = new User(
-                        doc.getString("uid"),
-                        doc.getString("name"),
-                        doc.getString("email"),
-                        "", 
-                        "child"
-                    );
-                    user.doctorId = doctorId;
-                    user.isApproved = false;
-                    pendingUsers.add(user);
-                    
-                    new Thread(() -> {
-                        if (db.appDao().getUserById(user.uid) == null) {
-                            db.appDao().insertUser(user);
-                        }
-                    }).start();
-                }
-                adapter.notifyDataSetChanged();
-                if (pendingUsers.isEmpty()) {
-                    Toast.makeText(this, "No pending approvals found for your ID", Toast.LENGTH_SHORT).show();
-                }
-            })
-            .addOnFailureListener(e -> {
-                Toast.makeText(this, "Error fetching pending users: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-            });
+    private void loadAllData() {
+        new Thread(() -> {
+            try {
+                // 1. Fetch from Supabase
+                List<User> latestPending = SupabaseAuthHelper.fetchPendingPatientsBlocking(doctorId);
+                List<User> latestApproved = SupabaseAuthHelper.fetchPatientsBlocking(doctorId);
+                
+                // 2. Sync Local DB
+                for (User u : latestPending) db.appDao().insertUser(u);
+                for (User u : latestApproved) db.appDao().insertUser(u);
+
+                runOnUiThread(() -> {
+                    pendingUsers.clear();
+                    pendingUsers.addAll(latestPending);
+                    pendingAdapter.notifyDataSetChanged();
+
+                    approvedUsers.clear();
+                    approvedUsers.addAll(latestApproved);
+                    totalAdapter.notifyDataSetChanged();
+                });
+            } catch (Exception e) {
+                Log.e("PendingApprovals", "Fetch failed", e);
+                // Fallback to local
+                List<User> allLocal = db.appDao().getPatientsByDoctor(doctorId);
+                List<User> pendingLocal = db.appDao().getPendingChildren();
+                
+                runOnUiThread(() -> {
+                    approvedUsers.clear();
+                    approvedUsers.addAll(allLocal);
+                    totalAdapter.notifyDataSetChanged();
+
+                    pendingUsers.clear();
+                    for (User u : pendingLocal) if (doctorId.equals(u.doctorId)) pendingUsers.add(u);
+                    pendingAdapter.notifyDataSetChanged();
+                });
+            }
+        }).start();
     }
 
-    private class PendingAdapter extends RecyclerView.Adapter<PendingAdapter.ViewHolder> {
+    private class UserAdapter extends RecyclerView.Adapter<UserAdapter.ViewHolder> {
         private List<User> users;
+        private boolean isPending;
 
-        public PendingAdapter(List<User> users) {
+        public UserAdapter(List<User> users, boolean isPending) {
             this.users = users;
+            this.isPending = isPending;
         }
 
         @NonNull
         @Override
         public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_pending_user, parent, false);
-            return new ViewHolder(view);
+            return new ViewHolder(LayoutInflater.from(parent.getContext()).inflate(R.layout.item_pending_user, parent, false));
         }
 
         @Override
         public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-            User user = users.get(position);
-            holder.nameText.setText(user.name);
-            holder.emailText.setText(user.email);
-            holder.approveBtn.setOnClickListener(v -> {
-                // IMPORTANT: When approving, we must use the document ID of the user.
-                // For children, the document ID is their UID.
-                dbFirestore.collection("users").document(user.uid)
-                        .update("isApproved", true)
-                        .addOnSuccessListener(aVoid -> {
-                            new Thread(() -> {
-                                db.appDao().approveUser(user.uid);
-                                runOnUiThread(() -> {
-                                    Toast.makeText(PendingApprovalsActivity.this, "User Approved!", Toast.LENGTH_SHORT).show();
-                                    users.remove(position);
-                                    notifyItemRemoved(position);
-
-                                    // Notify Dashboard to refresh
-                                    Intent refreshIntent = new Intent("com.example.smileapp.ACTION_REFRESH_DOCTOR_DASHBOARD");
-                                    refreshIntent.setPackage(getPackageName());
-                                    sendBroadcast(refreshIntent);
-                                });
-                            }).start();
-                        })
-                        .addOnFailureListener(e -> {
-                            Toast.makeText(PendingApprovalsActivity.this, "Failed to approve in cloud: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                        });
-            });
+            User u = users.get(position);
+            holder.nameText.setText(u.name);
+            holder.emailText.setText(u.email);
+            
+            if (isPending) {
+                holder.approveBtn.setVisibility(View.VISIBLE);
+                holder.approveBtn.setOnClickListener(v -> {
+                    holder.approveBtn.setEnabled(false);
+                    new Thread(() -> {
+                        if (SupabaseAuthHelper.approveUserBlocking(u.uid)) {
+                            db.appDao().approveUser(u.uid);
+                            runOnUiThread(() -> {
+                                Toast.makeText(PendingApprovalsActivity.this, "Patient Approved!", Toast.LENGTH_SHORT).show();
+                                loadAllData(); // Refresh both lists
+                            });
+                        } else {
+                            runOnUiThread(() -> {
+                                holder.approveBtn.setEnabled(true);
+                                Toast.makeText(PendingApprovalsActivity.this, "Approval failed.", Toast.LENGTH_SHORT).show();
+                            });
+                        }
+                    }).start();
+                });
+            } else {
+                holder.approveBtn.setVisibility(View.GONE);
+                holder.nameText.setText(u.name + " (Verified)");
+            }
         }
 
         @Override
-        public int getItemCount() {
-            return users.size();
-        }
+        public int getItemCount() { return users.size(); }
 
         class ViewHolder extends RecyclerView.ViewHolder {
-            TextView nameText, emailText;
-            MaterialButton approveBtn;
-
-            public ViewHolder(@NonNull View itemView) {
-                super(itemView);
-                nameText = itemView.findViewById(R.id.user_name);
-                emailText = itemView.findViewById(R.id.user_email);
-                approveBtn = itemView.findViewById(R.id.approve_button);
+            TextView nameText, emailText; MaterialButton approveBtn;
+            public ViewHolder(@NonNull View v) {
+                super(v);
+                nameText = v.findViewById(R.id.user_name);
+                emailText = v.findViewById(R.id.user_email);
+                approveBtn = v.findViewById(R.id.approve_button);
             }
         }
     }

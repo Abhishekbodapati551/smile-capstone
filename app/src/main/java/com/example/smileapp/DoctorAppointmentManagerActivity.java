@@ -20,7 +20,6 @@ import com.example.smileapp.models.Appointment;
 import com.example.smileapp.models.User;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.textfield.TextInputEditText;
-import com.google.firebase.firestore.FirebaseFirestore;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -31,7 +30,6 @@ import java.util.Locale;
 public class DoctorAppointmentManagerActivity extends AppCompatActivity {
 
     private AppDatabase db;
-    private FirebaseFirestore dbFirestore;
     private String doctorUid;
     private String sequentialDoctorId;
     private RecyclerView recyclerView;
@@ -45,7 +43,6 @@ public class DoctorAppointmentManagerActivity extends AppCompatActivity {
         setContentView(R.layout.activity_doctor_appointment_manager);
 
         db = AppDatabase.getInstance(this);
-        dbFirestore = FirebaseFirestore.getInstance();
         doctorUid = getIntent().getStringExtra("USER_ID");
 
         recyclerView = findViewById(R.id.appointments_recycler);
@@ -71,9 +68,7 @@ public class DoctorAppointmentManagerActivity extends AppCompatActivity {
 
     private void loadPatients() {
         if (sequentialDoctorId == null) return;
-        new Thread(() -> {
-            myPatients = db.appDao().getPatientsByDoctor(sequentialDoctorId);
-        }).start();
+        new Thread(() -> myPatients = db.appDao().getPatientsByDoctor(sequentialDoctorId)).start();
     }
 
     private void loadAppointments() {
@@ -84,19 +79,13 @@ public class DoctorAppointmentManagerActivity extends AppCompatActivity {
                 appointmentList.clear();
                 appointmentList.addAll(apps);
                 adapter.notifyDataSetChanged();
-                updateStats();
             });
         }).start();
     }
 
-    private void updateStats() {
-        // Find stats textviews in layout and update them
-        // For now just printing log or toast if needed
-    }
-
     private void showAddAppointmentDialog() {
         if (myPatients.isEmpty()) {
-            Toast.makeText(this, "No patients found. Please approve some patients first.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "No patients found.", Toast.LENGTH_SHORT).show();
             return;
         }
 
@@ -110,151 +99,72 @@ public class DoctorAppointmentManagerActivity extends AppCompatActivity {
         MaterialButton pickDateBtn = view.findViewById(R.id.pick_date_btn);
 
         final Calendar calendar = Calendar.getInstance();
-        
-        // Set up patient names for spinner
-        List<String> patientNames = new ArrayList<>();
-        for (User u : myPatients) patientNames.add(u.name);
-        ArrayAdapter<String> patientAdapter = new ArrayAdapter<>(this, android.R.layout.simple_dropdown_item_1line, patientNames);
-        patientSpinner.setAdapter(patientAdapter);
+        List<String> names = new ArrayList<>();
+        for (User u : myPatients) names.add(u.name);
+        patientSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_dropdown_item_1line, names));
 
         pickDateBtn.setOnClickListener(v -> {
-            new DatePickerDialog(this, (view1, year, month, dayOfMonth) -> {
-                calendar.set(Calendar.YEAR, year);
-                calendar.set(Calendar.MONTH, month);
-                calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth);
-                
-                new TimePickerDialog(this, (view2, hourOfDay, minute) -> {
-                    calendar.set(Calendar.HOUR_OF_DAY, hourOfDay);
-                    calendar.set(Calendar.MINUTE, minute);
-                    
-                    SimpleDateFormat sdf = new SimpleDateFormat("MMM dd, yyyy - hh:mm a", Locale.getDefault());
-                    dateText.setText(sdf.format(calendar.getTime()));
-                }, calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE), false).show();
-                
+            new DatePickerDialog(this, (v1, y, m, d) -> {
+                calendar.set(y, m, d);
+                new TimePickerDialog(this, (v2, h, min) -> {
+                    calendar.set(Calendar.HOUR_OF_DAY, h);
+                    calendar.set(Calendar.MINUTE, min);
+                    dateText.setText(new SimpleDateFormat("MMM dd, yyyy - hh:mm a", Locale.getDefault()).format(calendar.getTime()));
+                }, 10, 0, false).show();
             }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)).show();
         });
 
         builder.setPositiveButton("Schedule", (dialog, which) -> {
-            String selectedPatientName = patientSpinner.getText().toString();
+            String name = patientSpinner.getText().toString();
             String type = typeEdit.getText().toString().trim();
-            
-            User selectedPatient = null;
-            for (User u : myPatients) {
-                if (u.name.equals(selectedPatientName)) {
-                    selectedPatient = u;
-                    break;
-                }
-            }
+            User p = null;
+            for (User u : myPatients) if (u.name.equals(name)) { p = u; break; }
 
-            if (selectedPatient != null && !type.isEmpty() && !dateText.getText().toString().equals("No date selected")) {
-                Appointment app = new Appointment(selectedPatient.uid, selectedPatient.name, sequentialDoctorId, calendar.getTimeInMillis(), type);
+            if (p != null && !type.isEmpty()) {
+                Appointment app = new Appointment(p.uid, p.name, sequentialDoctorId, calendar.getTimeInMillis(), type);
                 saveAppointment(app);
-            } else {
-                Toast.makeText(this, "Please fill all fields", Toast.LENGTH_SHORT).show();
             }
         });
-
-        builder.setNegativeButton("Cancel", null);
-        builder.show();
+        builder.setNegativeButton("Cancel", null).show();
     }
 
     private void saveAppointment(Appointment app) {
         new Thread(() -> {
-            db.appDao().insertAppointment(app);
-            
-            // Sync with Firestore so patient gets a notification
-            dbFirestore.collection("appointments").add(app)
-                .addOnSuccessListener(docRef -> {
-                    // Update the appointment with the Firestore ID if needed
-                    runOnUiThread(() -> {
-                        Toast.makeText(this, "Appointment Scheduled & Synced!", Toast.LENGTH_SHORT).show();
-                        loadAppointments();
-                    });
+            boolean success = SupabaseAuthHelper.saveAppointmentBlocking(app);
+            if (success) {
+                db.appDao().insertAppointment(app);
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "Scheduled!", Toast.LENGTH_SHORT).show();
+                    loadAppointments();
                 });
+            }
         }).start();
-    }
-
-    private void rescheduleAppointment(Appointment app) {
-        final Calendar calendar = Calendar.getInstance();
-        calendar.setTimeInMillis(app.date);
-
-        new DatePickerDialog(this, (view1, year, month, dayOfMonth) -> {
-            calendar.set(Calendar.YEAR, year);
-            calendar.set(Calendar.MONTH, month);
-            calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth);
-
-            new TimePickerDialog(this, (view2, hourOfDay, minute) -> {
-                calendar.set(Calendar.HOUR_OF_DAY, hourOfDay);
-                calendar.set(Calendar.MINUTE, minute);
-
-                long newDate = calendar.getTimeInMillis();
-                new Thread(() -> {
-                    app.date = newDate;
-                    db.appDao().updateAppointment(app);
-                    
-                    // Update in Firestore
-                    dbFirestore.collection("appointments")
-                        .whereEqualTo("childId", app.childId)
-                        .whereEqualTo("date", app.date) // This might be tricky if not exact, better use a firestoreId
-                        .get()
-                        .addOnSuccessListener(querySnapshot -> {
-                            if (!querySnapshot.isEmpty()) {
-                                querySnapshot.getDocuments().get(0).getReference().update("date", newDate);
-                            }
-                        });
-
-                    runOnUiThread(() -> {
-                        Toast.makeText(this, "Appointment Rescheduled!", Toast.LENGTH_SHORT).show();
-                        loadAppointments();
-                    });
-                }).start();
-
-            }, calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE), false).show();
-
-        }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)).show();
     }
 
     private class AppointmentAdapter extends RecyclerView.Adapter<AppointmentAdapter.ViewHolder> {
         private List<Appointment> apps;
-
-        public AppointmentAdapter(List<Appointment> apps) {
-            this.apps = apps;
-        }
-
+        public AppointmentAdapter(List<Appointment> apps) { this.apps = apps; }
         @NonNull
         @Override
         public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_appointment, parent, false);
-            return new ViewHolder(view);
+            return new ViewHolder(LayoutInflater.from(parent.getContext()).inflate(R.layout.item_appointment, parent, false));
         }
-
         @Override
         public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-            Appointment app = apps.get(position);
-            holder.patientName.setText(app.childName);
-            holder.type.setText(app.type);
-            
-            SimpleDateFormat sdf = new SimpleDateFormat("MMM dd, yyyy - hh:mm a", Locale.getDefault());
-            holder.date.setText(sdf.format(new Date(app.date)));
-
-            holder.rescheduleBtn.setOnClickListener(v -> rescheduleAppointment(app));
+            Appointment a = apps.get(position);
+            holder.pName.setText(a.childName);
+            holder.type.setText(a.type);
+            holder.date.setText(new SimpleDateFormat("MMM dd, yyyy - hh:mm a", Locale.getDefault()).format(new Date(a.date)));
         }
-
         @Override
-        public int getItemCount() {
-            return apps.size();
-        }
-
+        public int getItemCount() { return apps.size(); }
         class ViewHolder extends RecyclerView.ViewHolder {
-            TextView patientName, type, date;
-            MaterialButton rescheduleBtn;
-
-            public ViewHolder(@NonNull View itemView) {
-                super(itemView);
-                patientName = itemView.findViewById(R.id.patient_name);
-                type = itemView.findViewById(R.id.appointment_type);
-                date = itemView.findViewById(R.id.appointment_date);
-                rescheduleBtn = itemView.findViewById(R.id.reschedule_btn);
+            TextView pName, type, date;
+            public ViewHolder(@NonNull View v) {
+                super(v);
+                pName = v.findViewById(R.id.patient_name);
+                type = v.findViewById(R.id.appointment_type);
+                date = v.findViewById(R.id.appointment_date);
             }
         }
     }

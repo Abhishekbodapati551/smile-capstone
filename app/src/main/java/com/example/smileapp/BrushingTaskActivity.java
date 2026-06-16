@@ -34,8 +34,8 @@ import com.example.smileapp.models.User;
 import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton;
 import com.google.common.util.concurrent.ListenableFuture;
 
-import com.google.firebase.firestore.FirebaseFirestore;
-
+import android.net.Uri;
+import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.HashMap;
 import java.util.Locale;
@@ -49,7 +49,9 @@ public class BrushingTaskActivity extends AppCompatActivity {
     private static final int REQUEST_CODE_PERMISSIONS = 10;
     private static final String[] REQUIRED_PERMISSIONS = {
             Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO
+            Manifest.permission.RECORD_AUDIO,
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU ? 
+                Manifest.permission.READ_MEDIA_VIDEO : Manifest.permission.READ_EXTERNAL_STORAGE
     };
 
     private PreviewView viewFinder;
@@ -73,7 +75,6 @@ public class BrushingTaskActivity extends AppCompatActivity {
 
         db = AppDatabase.getInstance(this);
         userId = getIntent().getStringExtra("USER_ID");
-        if (userId == null) userId = "demo_user";
 
         viewFinder = findViewById(R.id.viewFinder);
         timerText = findViewById(R.id.timer_text);
@@ -183,44 +184,57 @@ public class BrushingTaskActivity extends AppCompatActivity {
         }.start();
     }
 
-    private void saveLog(String uri) {
+    private void saveLog(String localUriStr) {
         uploadProgress.setVisibility(View.VISIBLE);
+        Log.d(TAG, "Starting Supabase upload for user: " + userId);
+        
         new Thread(() -> {
-            BrushingLog log = new BrushingLog(userId, uri, System.currentTimeMillis());
-            db.appDao().insertBrushingLog(log);
-            
-            User user = db.appDao().getUserById(userId);
-            if (user != null) {
-                user.points += 10;
-                user.streak += 1;
-                db.appDao().updateUser(user);
+            try {
+                Uri fileUri = Uri.parse(localUriStr);
+                InputStream inputStream = getContentResolver().openInputStream(fileUri);
                 
-                // Sync to Firestore
-                FirebaseFirestore firestore = FirebaseFirestore.getInstance();
-                
-                // Update User Points
-                firestore.collection("users").document(userId)
-                    .update("points", user.points, "streak", user.streak);
-                
-                // Save Brushing Log metadata
-                Map<String, Object> logMap = new HashMap<>();
-                logMap.put("childId", userId);
-                logMap.put("videoUri", uri); // Local URI for now
-                logMap.put("timestamp", log.timestamp);
-                logMap.put("approved", false);
-                logMap.put("doctorId", user.doctorId); // Store doctorId for easier querying
-                
-                firestore.collection("brushing_logs").add(logMap)
-                    .addOnSuccessListener(documentReference -> {
-                        // Optionally update local log with firestore ID if needed
-                    });
+                if (inputStream != null) {
+                    // 1. Upload to Supabase Storage
+                    String cloudUrl = SupabaseAuthHelper.uploadVideoBlocking(userId, inputStream);
+                    Log.d(TAG, "Uploaded to Supabase: " + cloudUrl);
+                    
+                    // 2. Fetch fresh user data to get correct Doctor ID and Current Streak
+                    SessionManager sm = new SessionManager(this);
+                    User freshUser = SupabaseAuthHelper.signInBlocking(sm.getSavedEmail(), sm.getSavedPassword());
+                    
+                    if (freshUser != null) {
+                        BrushingLog log = new BrushingLog(userId, cloudUrl, System.currentTimeMillis());
+                        log.doctorId = freshUser.doctorId;
+                        log.childName = freshUser.name;
+                        
+                        // 3. Save to Supabase (Video Log ONLY)
+                        try {
+                            boolean success = SupabaseAuthHelper.saveLogBlocking(log, freshUser);
+                            if (success) {
+                                db.appDao().insertBrushingLog(log);
+                                
+                                runOnUiThread(() -> {
+                                    uploadProgress.setVisibility(View.GONE);
+                                    Toast.makeText(this, "Mission Accomplished! Video submitted for doctor review.", Toast.LENGTH_LONG).show();
+                                    finish();
+                                });
+                            }
+                        } catch (Exception dbErr) {
+                            Log.e(TAG, "DB Save Detailed Error", dbErr);
+                            runOnUiThread(() -> {
+                                uploadProgress.setVisibility(View.GONE);
+                                Toast.makeText(this, "Database Save Failed: " + dbErr.getMessage(), Toast.LENGTH_LONG).show();
+                            });
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Upload/Save Error", e);
+                runOnUiThread(() -> {
+                    uploadProgress.setVisibility(View.GONE);
+                    Toast.makeText(this, "Process Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                });
             }
-            
-            runOnUiThread(() -> {
-                uploadProgress.setVisibility(View.GONE);
-                Toast.makeText(this, "Brushing session recorded! +10 Points", Toast.LENGTH_LONG).show();
-                finish();
-            });
         }).start();
     }
 

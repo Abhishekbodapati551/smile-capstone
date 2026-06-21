@@ -22,7 +22,7 @@ RUN mkdir -p $ANDROID_SDK_ROOT/cmdline-tools \
 # Accept Android SDK licenses
 RUN yes | sdkmanager --licenses
 
-# Install specific SDK components (matching build.gradle.kts)
+# Install specific SDK components
 RUN sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
 # Set working directory
@@ -34,5 +34,5 @@ COPY . .
 # Ensure gradlew is executable
 RUN chmod +x ./gradlew
 
-# Default command (can be overridden in Jenkins)
+# Default command
 CMD ["./gradlew", "assembleDebug"]

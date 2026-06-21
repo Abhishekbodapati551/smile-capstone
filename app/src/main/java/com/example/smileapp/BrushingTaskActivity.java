@@ -186,56 +186,45 @@ public class BrushingTaskActivity extends AppCompatActivity {
 
     private void saveLog(String localUriStr) {
         uploadProgress.setVisibility(View.VISIBLE);
-        Log.d(TAG, "Starting Supabase upload for user: " + userId);
+        Log.d(TAG, "Starting Local Host upload for user: " + userId);
         
-        new Thread(() -> {
-            try {
-                Uri fileUri = Uri.parse(localUriStr);
-                InputStream inputStream = getContentResolver().openInputStream(fileUri);
-                
-                if (inputStream != null) {
-                    // 1. Upload to Supabase Storage
-                    String cloudUrl = SupabaseAuthHelper.uploadVideoBlocking(userId, inputStream);
-                    Log.d(TAG, "Uploaded to Supabase: " + cloudUrl);
+        LocalStorageManager storageManager = new LocalStorageManager(this);
+        
+        // Convert Uri to File for the uploader
+        Uri videoUri = Uri.parse(localUriStr);
+        String realPath = FileUtils.getPath(this, videoUri);
+        
+        if (realPath != null) {
+            java.io.File videoFile = new java.io.File(realPath);
+            
+            storageManager.uploadVideo(videoFile, cloudUrl -> {
+                if (cloudUrl != null) {
+                    Log.d(TAG, "Uploaded to Local Host: " + cloudUrl);
                     
-                    // 2. Fetch fresh user data to get correct Doctor ID and Current Streak
-                    SessionManager sm = new SessionManager(this);
-                    User freshUser = SupabaseAuthHelper.signInBlocking(sm.getSavedEmail(), sm.getSavedPassword());
+                    // Create the log object with the local server URL
+                    BrushingLog log = new BrushingLog(userId, cloudUrl, System.currentTimeMillis());
                     
-                    if (freshUser != null) {
-                        BrushingLog log = new BrushingLog(userId, cloudUrl, System.currentTimeMillis());
-                        log.doctorId = freshUser.doctorId;
-                        log.childName = freshUser.name;
-                        
-                        // 3. Save to Supabase (Video Log ONLY)
-                        try {
-                            boolean success = SupabaseAuthHelper.saveLogBlocking(log, freshUser);
-                            if (success) {
-                                db.appDao().insertBrushingLog(log);
-                                
-                                runOnUiThread(() -> {
-                                    uploadProgress.setVisibility(View.GONE);
-                                    Toast.makeText(this, "Mission Accomplished! Video submitted for doctor review.", Toast.LENGTH_LONG).show();
-                                    finish();
-                                });
-                            }
-                        } catch (Exception dbErr) {
-                            Log.e(TAG, "DB Save Detailed Error", dbErr);
-                            runOnUiThread(() -> {
-                                uploadProgress.setVisibility(View.GONE);
-                                Toast.makeText(this, "Database Save Failed: " + dbErr.getMessage(), Toast.LENGTH_LONG).show();
-                            });
-                        }
-                    }
+                    // Save to local Room database ONLY (No internet needed for this part)
+                    new Thread(() -> {
+                        db.appDao().insertBrushingLog(log);
+                        runOnUiThread(() -> {
+                            uploadProgress.setVisibility(View.GONE);
+                            Toast.makeText(this, "Video saved to Local Host storage!", Toast.LENGTH_LONG).show();
+                            finish();
+                        });
+                    }).start();
+                } else {
+                    runOnUiThread(() -> {
+                        uploadProgress.setVisibility(View.GONE);
+                        Toast.makeText(this, "Upload to Local Host failed. Run 'adb reverse tcp:9100 tcp:9100'!", Toast.LENGTH_LONG).show();
+                    });
                 }
-            } catch (Exception e) {
-                Log.e(TAG, "Upload/Save Error", e);
-                runOnUiThread(() -> {
-                    uploadProgress.setVisibility(View.GONE);
-                    Toast.makeText(this, "Process Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                });
-            }
-        }).start();
+                return null;
+            });
+        } else {
+            uploadProgress.setVisibility(View.GONE);
+            Toast.makeText(this, "Could not find video file path.", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private boolean allPermissionsGranted() {

@@ -13,9 +13,8 @@ import kotlin.concurrent.thread
 
 class LocalStorageManager(context: Context) {
 
-    // 10.0.2.2 is the special IP to reach your computer's localhost from an emulator
-    // If using a real phone, use your computer's actual IP address
-    private val endPoint = "http://10.0.2.2:9100" 
+    // Using 127.0.0.1 with 'adb reverse tcp:9100 tcp:9100' for the most stable connection
+    private val endPoint = "http://127.0.0.1:9100"
     private val bucketName = "smile-videos"
     private val accessKey = "admin"
     private val secretKey = "password123"

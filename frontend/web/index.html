@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmileApp Capstone - Doctor Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .video-card { transition: transform 0.2s; margin-bottom: 20px; }
+        .video-card:hover { transform: scale(1.02); }
+        .navbar { background-color: #0d6efd; color: white; }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg mb-4">
+    <div class="container">
+        <span class="navbar-brand h1 mb-0">SmileApp Admin Dashboard</span>
+    </div>
+</nav>
+
+<div class="container">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>Patient Video Submissions</h2>
+            <p class="text-muted">Total recordings stored on local host.</p>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-primary" onclick="fetchVideos()">Refresh Data</button>
+        </div>
+    </div>
+
+    <div id="videoGrid" class="row">
+        <!-- Videos will appear here -->
+    </div>
+</div>
+
+<script>
+    async function fetchVideos() {
+        try {
+            // Talk to our new Backend API
+            const response = await fetch('http://localhost:5000/api/videos');
+            const videos = await response.json();
+            const grid = document.getElementById('videoGrid');
+            grid.innerHTML = '';
+
+            videos.forEach(video => {
+                const card = `
+                    <div class="col-md-4">
+                        <div class="card video-card shadow-sm">
+                            <video class="card-img-top" controls>
+                                <source src="${video.video_url}" type="video/mp4">
+                                Your browser does not support the video tag.
+                            </video>
+                            <div class="card-body">
+                                <h5 class="card-title">User: ${video.user_id}</h5>
+                                <p class="card-text small text-muted">Uploaded: ${new Date(video.created_at).toLocaleString()}</p>
+                                <a href="${video.video_url}" target="_blank" class="btn btn-sm btn-outline-primary">Open Full Screen</a>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                grid.innerHTML += card;
+            });
+        } catch (error) {
+            console.error("Failed to fetch videos", error);
+        }
+    }
+
+    // Load videos on start
+    fetchVideos();
+</script>
+</body>
+</html>

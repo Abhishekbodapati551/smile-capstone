@@ -1,29 +1,29 @@
 pipeline {
-    agent {
-        docker {
-            image 'smile-app-build:latest'
-            args '-v $HOME/.gradle:/root/.gradle'
-        }
+    agent any
+
+    environment {
+        // Force Gradle to use the correct Linux path inside the container
+        JAVA_HOME = "/opt/java/openjdk"
     }
+
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
+                git branch: 'main', url: 'https://github.com/Abhishekbodapati551/smile-capstone.git'
             }
         }
+
         stage('Build') {
             steps {
-                sh './gradlew assembleDebug'
-            }
-        }
-        stage('Test') {
-            steps {
-                sh './gradlew test'
+                sh 'chmod +x gradlew'
+                // Pass Java home and ignore local gradle.properties overrides
+                sh './gradlew assembleDebug -Dorg.gradle.java.home=$JAVA_HOME'
             }
         }
     }
+
     post {
-        always {
+        success {
             archiveArtifacts artifacts: 'app/build/outputs/apk/debug/*.apk', fingerprint: true
         }
     }

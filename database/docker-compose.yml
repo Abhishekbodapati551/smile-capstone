@@ -1,8 +1,6 @@
 services:
-  # 1. Video Storage (MinIO)
   minio:
     image: minio/minio
-    container_name: smile-storage
     ports:
       - "9100:9000"
       - "9101:9001"
@@ -13,10 +11,8 @@ services:
       - ./storage-data:/data
     command: server /data --console-address ":9001"
 
-  # 2. Structured Database (Postgres)
   db:
     image: postgres:15
-    container_name: smile-db
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: password123
@@ -26,23 +22,22 @@ services:
     volumes:
       - ./postgres-data:/var/lib/postgresql/data
 
-  # 3. Backend API (Node.js)
-  backend-api:
+  backend:
     image: node:18
-    container_name: smile-backend
     working_dir: /app
     volumes:
       - ../backend:/app
+      - ../frontend/web:/frontend/web
     ports:
       - "5000:5000"
     command: sh -c "npm install && node server.js"
     depends_on:
       - db
+    environment:
+      - DATABASE_URL=postgres://admin:password123@db:5432/smile_db
 
-  # 4. Automation (Jenkins)
   jenkins:
     image: jenkins/jenkins:lts
-    container_name: smile-jenkins
     user: root
     ports:
       - "8180:8080"
